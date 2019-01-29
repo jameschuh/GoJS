@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IVR Tree</title>
+<meta name="description" content="An IVR (Interactive Voice Response) diagram showing a call-menu tree with various prompts and responses." />
+  <!-- Copyright 1998-2019 by Northwoods Software Corporation. -->
+  <meta charset="UTF-8">
+  <script src="../release/go.js"></script>
+  <script src="../extensions/Figures.js"></script>
+
+  <script id="code">
+    function init() {
+      if (window.goSamples) goSamples();  // init for these samples -- you don't need to call this
+      var $ = go.GraphObject.make;  // for conciseness in defining templates
+      myDiagram =
+        $(go.Diagram, "myDiagramDiv",
+          {
+            allowCopy: false,
+            "draggingTool.dragsTree": false,
+            "commandHandler.deletesTree": false,
+            layout:
+              $(go.TreeLayout,
+                { angle: 90, arrangement: go.TreeLayout.ArrangementFixedRoots }),
+            "undoManager.isEnabled": false
+          });
+
+
+      // var levelColors = ["#AC193D", "#2672EC", "#8C0095", "#5133AB",
+      //                  "#008299", "#D24726", "#008A00", "#094AB2"];
+
+      // // override TreeLayout.commitNodes to also modify the background brush based on the tree depth level
+      // myDiagram.layout.commitNodes = function() {
+      //   go.TreeLayout.prototype.commitNodes.call(myDiagram.layout);  // do the standard behavior
+      //   // then go through all of the vertexes and set their corresponding node's Shape.fill
+      //   // to a brush dependent on the TreeVertex.level value
+      //   myDiagram.layout.network.vertexes.each(function(v) {
+      //     if (v.node) {
+      //       var level = v.level % (levelColors.length);
+      //       var color = levelColors[level];
+      //       var shape = v.node.findObject("SHAPE");
+      //       if (shape) shape.fill = $(go.Brush, "Linear", { 0: color, 1: go.Brush.lightenBy(color, 0.05), start: go.Spot.Left, end: go.Spot.Right });
+      //     }
+      //   });
+      // };
+
+
+
+      // when the document is modified, add a "*" to the title and enable the "Save" button
+      myDiagram.addDiagramListener("Modified", function(e) {
+        var button = document.getElementById("SaveButton");
+        if (button) button.disabled = !myDiagram.isModified;
+        var idx = document.title.indexOf("*");
+        if (myDiagram.isModified) {
+          if (idx < 0) document.title += "*";
+        } else {
+          if (idx >= 0) document.title = document.title.substr(0, idx);
+        }
+      });
+
+      var bluegrad = $(go.Brush, "Linear", { 0: "#C4ECFF", 1: "#70D4FF" });
+      var greengrad = $(go.Brush, "Linear", { 0: "#B1E2A5", 1: "#7AE060" });
+
+      // each action is represented by a shape and some text
+      var actionTemplate =
+        $(go.Panel, "Horizontal",
+          $(go.Shape,
+            { width: 12, height: 12 },
+            new go.Binding("figure"),
+            new go.Binding("fill")
+          ),
+          $(go.TextBlock,
+            { font: "10pt Verdana, sans-serif" },
+            new go.Binding("text")
+          )
+        );
+
+      // each regular Node has body consisting of a title followed by a collapsible list of actions,
+      // controlled by a PanelExpanderButton, with a TreeExpanderButton underneath the body
+      myDiagram.nodeTemplate =  // the default node template
+        $(go.Node, "Vertical",
+          { selectionObjectName: "BODY" },
+          // the main "BODY" consists of a RoundedRectangle surrounding nested Panels
+          $(go.Panel, "Auto",
+            { name: "BODY" },
+            $(go.Shape, "RoundedRectangle",
+              { name: "SHAPE",fill: bluegrad, stroke: null }
+            ),
+            $(go.Panel, "Vertical",
+              { margin: 3 },
+              // the title
+              $(go.TextBlock,
+                { stretch: go.GraphObject.Horizontal,
+                font: "bold 12pt Verdana, sans-serif"
+                },
+                new go.Binding("text", "question")
+              ),
+              // the optional list of actions
+              $(go.Panel, "Vertical",
+                { stretch: go.GraphObject.Horizontal, visible: false },  // not visible unless there is more than one action
+                new go.Binding("visible", "actions", function(acts) {
+                  return (Array.isArray(acts) && acts.length > 0);
+                }),
+                // headered by a label and a PanelExpanderButton inside a Table
+                $(go.Panel, "Table",
+                  { stretch: go.GraphObject.Horizontal },
+                  $(go.TextBlock, 
+                    { alignment: go.Spot.Left,
+                    font: "9pt Verdana, sans-serif"
+                    },
+                    new go.Binding("text", "title")
+                  ),
+                  $("PanelExpanderButton", "COLLAPSIBLE",  // name of the object to make visible or invisible
+                    { column: 1, alignment: go.Spot.Right }
+                  )
+                ), // end Table panel
+                // with the list data bound in the Vertical Panel
+                $(go.Panel, "Vertical",
+                  { name: "COLLAPSIBLE",  // identify to the PanelExpanderButton
+                    padding: 2,
+                    stretch: go.GraphObject.Horizontal,  // take up whole available width
+                    background: "white",  // to distinguish from the node's body
+                    defaultAlignment: go.Spot.Left,  // thus no need to specify alignment on each element
+                    itemTemplate: actionTemplate  // the Panel created for each item in Panel.itemArray
+                  },
+                  new go.Binding("itemArray", "actions")  // bind Panel.itemArray to nodedata.actions
+                )  // end action list Vertical Panel
+              )  // end optional Vertical Panel
+            )  // end outer Vertical Panel
+          ),  // end "BODY"  Auto Panel
+          $(go.Panel,  // this is underneath the "BODY"
+            { height: 17 },  // always this height, even if the TreeExpanderButton is not visible
+            $("TreeExpanderButton")
+          )
+        );
+
+      // define a second kind of Node:
+      myDiagram.nodeTemplateMap.add("Terminal",
+        $(go.Node, "Spot",
+          $(go.Shape, "Circle",
+            { width: 55, height: 55, fill: greengrad, stroke: null }
+          ),
+          $(go.TextBlock,
+            { font: "10pt Verdana, sans-serif" },
+            new go.Binding("text")
+          )
+        )
+      );
+
+      myDiagram.linkTemplate =
+        $(go.Link, go.Link.Orthogonal,
+          { deletable: false, corner: 10 },
+          $(go.Shape,
+            { strokeWidth: 2 }
+          ),
+          $(go.TextBlock, go.Link.OrientUpright,
+            { background: "white",
+              visible: false,  // unless the binding sets it to true for a non-empty string
+              segmentIndex: -2,
+              segmentOrientation: go.Link.None
+            },
+            new go.Binding("text", "answer"),
+            // hide empty string;
+            // if the "answer" property is undefined, visible is false due to above default setting
+            new go.Binding("visible", "answer", function(a) { return (a ? true : false); })
+          )
+        );
+
+      myDiagram.linkTemplateMap.add("Support",
+      $(go.Link, go.Link.Bezier,
+        { isLayoutPositioned: false, isTreeLink: false, curviness: 50 },
+        { relinkableFrom: true, relinkableTo: true },
+        $(go.Shape,
+          { stroke: "#cc0099", strokeWidth: 2 }),
+        $(go.Shape,
+          { toArrow: "OpenTriangle", stroke: "#cc0099", strokeWidth: 2 }),
+        $(go.TextBlock,
+          new go.Binding("text", "text"),
+          { stroke: "#cc0099", background: "rgba(255,255,255,0.75)",
+            maxSize: new go.Size(80, NaN)
+          })));
+
+    myDiagram.linkTemplateMap.add("Motion",
+      $(go.Link, go.Link.Bezier,
+        { isLayoutPositioned: false, isTreeLink: false, curviness: -60 },
+        { relinkableFrom: true, relinkableTo: true },
+        $(go.Shape,
+          { stroke: "orange", strokeWidth: 2 }),
+        $(go.Shape,
+          { toArrow: "OpenTriangle", stroke: "orange", strokeWidth: 2 }),
+        $(go.TextBlock,
+          new go.Binding("text", "text"),
+          { stroke: "orange", background: "rgba(255,255,255,0.75)",
+            maxSize: new go.Size(80, NaN)
+          })));
+
+
+      var nodeDataArray = [
+        { key: 1, question: "李庚翯",title:"营业区主管",
+          actions: [
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共3个营业部|7个营业组|7名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+            // { text: "Sales", figure: "ElectricalHazard", fill: "blue" },
+            // { text: "Parts and Services", figure: "FireHazard", fill: "red" },
+            // { text: "Representative", figure: "IrritationHazard", fill: "yellow" },
+            
+            // {text:"FivePointedStar",figure:"FivePointedStar",fill:"red"},
+            // {text:"FivePointedBurst",figure:"FivePointedBurst",fill:"red"},
+            // {text:"Actor",figure:"Actor",fill:"yellow"},
+            // {text:"Hand",figure:"Hand",fill:"red"},
+            
+            
+          ]
+        },
+        { key: 2, question: "张建国",title:"营业部主管",
+          actions: [
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共3个营业组|4名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 3, question: "王十三",title:"营业部主管",
+          actions: [
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共3个营业组|3名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 4, question: "焦玉慈",title:"营业部主管",
+          actions: [
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共1名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 5, question: "李莉",title:'营业组长' ,
+          actions: [
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共1名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 6, question: "澹台光华",title:"营业组长",
+          actions:[
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共1名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ] 
+        },
+        { key: 7, question: "欧阳娜娜",title:"营业组长",
+          actions: [
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共2名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 8, question: "范冰冰" ,title:"营业组长",
+          actions:[
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共1名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 9, question: "华晓明" ,title:"营业组长",
+          actions:[
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共1名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 10, question: "娜塔莎" ,title:"营业组长",
+          actions:[
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共1名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        },
+        { key: 11, question: "浩克" ,title:"客户经理",
+          actions:[
+            {text:"个人5600C",figure:"Hand",fill:"#ff6699"}
+          ]
+        },
+        { key: 12, question: "光子" ,title:"客户经理",
+          actions:[
+            {text:"个人5600C",figure:"Hand",fill:"#ff6699"}
+          ]
+        },
+        { key: 13, question: "美队" ,title:"客户经理",
+          actions:[
+            {text:"个人5600C",figure:"Hand",fill:"#ff6699"}
+          ]
+        },
+        { key: 14, question: "班纳" ,title:"客户经理",
+          actions:[
+            {text:"个人5600C",figure:"Hand",fill:"#ff6699"}
+          ]
+        },
+        // { key: 15, question: "Steven" ,
+        //   actions:[{ text: "Maintenance", figure: "ElectricalHazard", fill: "blue" }]
+        // },
+        // { key: 16, question: "Tom" ,
+        //   actions:[{ text: "Maintenance", figure: "ElectricalHazard", fill: "blue" }]
+        // },
+        { key: 17, question: "胡一凡",title:"客户经理",
+          actions:[
+            {text:"个人5600C",figure:"Hand",fill:"#ff6699"}
+          ]
+         },
+        { key: 18, question: "李萍",title:"客户经理",
+          actions:[
+            {text:"个人5600C",figure:"Hand",fill:"#ff6699"}
+          ]
+         },
+        { key: 19, question: "丁一删" ,title:"客户经理",
+          actions:[
+            {text:"个人5600C",figure:"Hand",fill:"#ff6699"}
+          ]
+        },
+        { key: 20, question: "邹明凯" ,title:"客户经理",
+          actions:[
+            {text:"团队53000C",figure:"Pie",fill:"#87DC49"},
+            {text:"个人5600C",figure:"5Bars",fill:"#ff6699"},
+            {text:"共1名客户经理",figure:"BpmnTaskUser",fill:"#00ff99"}
+          ]
+        }
+      ];
+      var linkDataArray = [
+        { from: 1, to: 2 },
+        { from: 1, to: 3 },
+        { from: 1, to: 4 },
+        { from: 2, to: 5 },
+        { from: 2, to: 6 },
+        { from: 2, to: 7 },
+        { from: 3, to: 8 },
+        { from: 3, to: 9 },
+        { from: 3, to: 10 },
+        { from: 7, to: 11 },
+        { from: 7, to: 12 },
+        { from: 5, to: 13 },
+        { from: 6, to: 14 },
+        // { from: 11, to: 15 },
+        // { from: 12, to: 16 },
+        { from: 8, to: 17 },
+        { from: 9, to: 18 },
+        { from: 10, to: 19 },
+        { from: 4, to: 20 },
+        {"from":"2", "to":"3", "category":"Support","text":"育成"},
+        {"from":"7", "to":"6", "category":"Support","text":"育成"}
+      ];
+
+      // create the Model with the above data, and assign to the Diagram
+      myDiagram.model = $(go.GraphLinksModel,
+        {
+          copiesArrays: true,
+          copiesArrayObjects: true,
+          nodeDataArray: nodeDataArray,
+          linkDataArray: linkDataArray
+        });
+
+    }
+  </script>
+</head>
+<body onload="init()">
+<div id="sample">
+  <div id="myDiagramDiv" style="border: solid 1px black; width:100%; height:800px"></div>
+ 
+</div>
+</body>
+</html>
+
+
+
+<script>
+
+// {text:"Rectangle",figure:"Rectangle",fill:"yellow"},
+            // {text:"Square",figure:"Square",fill:"yellow"},
+            // {text:"RoundedRectangle",figure:"RoundedRectangle",fill:"yellow"},
+            // {text:"Border",figure:"Border",fill:"yellow"},
+            // {text:"Ellipse",figure:"Ellipse",fill:"yellow"},
+            // {text:"Circle",figure:"Circle",fill:"yellow"},
+            // {text:"TriangleRight",figure:"TriangleRight",fill:"yellow"},
+            // {text:"TriangleDown",figure:"TriangleDown",fill:"yellow"},
+            // {text:"TriangleLeft",figure:"TriangleLeft",fill:"yellow"},
+            // {text:"TriangleUp",figure:"TriangleUp",fill:"yellow"},
+            // {text:"Triangle",figure:"Triangle",fill:"yellow"},
+            // {text:"Diamond",figure:"Diamond",fill:"yellow"},
+            // {text:"LineH",figure:"LineH",fill:"yellow"},
+            // {text:"LineV",figure:"LineV",fill:"yellow"},
+            // {text:"BarH",figure:"BarH",fill:"yellow"},
+            // {text:"BarV",figure:"BarV",fill:"yellow"},
+            // {text:"MinusLine",figure:"MinusLine",fill:"yellow"},
+            // {text:"PlusLine",figure:"PlusLine",fill:"yellow"},
+            // {text:"XLine",figure:"XLine",fill:"yellow"},
+            // {text:"AsteriskLine",figure:"AsteriskLine",fill:"yellow"},
+            // {text:"CircleLine",figure:"CircleLine",fill:"yellow"},
+            // {text:"Line1",figure:"Line1",fill:"yellow"},
+            // {text:"Line2",figure:"Line2",fill:"yellow"},
+            // {text:"Curve1",figure:"Curve1",fill:"yellow"},
+            // {text:"Curve2",figure:"Curve2",fill:"yellow"},
+            // {text:"Curve3",figure:"Curve3",fill:"yellow"},
+            // {text:"Curve4",figure:"Curve4",fill:"yellow"},
+            // {text:"TriangleDownLeft",figure:"TriangleDownLeft",fill:"yellow"},
+            // {text:"TriangleDownRight",figure:"TriangleDownRight",fill:"yellow"},
+            // {text:"TriangleUpLeft",figure:"TriangleUpLeft",fill:"yellow"},
+            // {text:"TriangleUpRight",figure:"TriangleUpRight",fill:"yellow"},
+            // {text:"RightTriangle",figure:"RightTriangle",fill:"yellow"},
+            // {text:"Parallelogram1",figure:"Parallelogram1",fill:"yellow"},
+            // {text:"Parallelogram",figure:"Parallelogram",fill:"yellow"},
+            // {text:"Parallelogram2",figure:"Parallelogram2",fill:"yellow"},
+            // {text:"Trapezoid1",figure:"Trapezoid1",fill:"yellow"},
+            // {text:"Trapezoid",figure:"Trapezoid",fill:"yellow"},
+            // {text:"Trapezoid2",figure:"Trapezoid2",fill:"yellow"},
+            // {text:"ManualOperation",figure:"ManualOperation",fill:"yellow"},
+            // {text:"Pentagon",figure:"Pentagon",fill:"yellow"},
+            // {text:"Hexagon",figure:"Hexagon",fill:"yellow"},
+            // {text:"Heptagon",figure:"Heptagon",fill:"yellow"},
+            // {text:"Octagon",figure:"Octagon",fill:"yellow"},
+            // {text:"Nonagon",figure:"Nonagon",fill:"yellow"},
+            // {text:"Decagon",figure:"Decagon",fill:"yellow"},
+            // {text:"Dodecagon",figure:"Dodecagon",fill:"yellow"},
+            // {text:"FivePointedStar",figure:"FivePointedStar",fill:"red"},
+            // {text:"SixPointedStar",figure:"SixPointedStar",fill:"yellow"},
+            // {text:"SevenPointedStar",figure:"SevenPointedStar",fill:"yellow"},
+            // {text:"EightPointedStar",figure:"EightPointedStar",fill:"yellow"},
+            // {text:"NinePointedStar",figure:"NinePointedStar",fill:"yellow"},
+            // {text:"TenPointedStar",figure:"TenPointedStar",fill:"yellow"},
+            // {text:"FivePointedBurst",figure:"FivePointedBurst",fill:"red"},
+            // {text:"SixPointedBurst",figure:"SixPointedBurst",fill:"yellow"},
+            // {text:"SevenPointedBurst",figure:"SevenPointedBurst",fill:"yellow"},
+            // {text:"EightPointedBurst",figure:"EightPointedBurst",fill:"yellow"},
+            // {text:"NinePointedBurst",figure:"NinePointedBurst",fill:"yellow"},
+            // {text:"TenPointedBurst",figure:"TenPointedBurst",fill:"yellow"},
+            // {text:"FramedRectangle",figure:"FramedRectangle",fill:"yellow"},
+            // {text:"Ring",figure:"Ring",fill:"yellow"},
+            // {text:"Cloud",figure:"Cloud",fill:"yellow"},
+            // {text:"StopSign",figure:"StopSign",fill:"yellow"},
+            // {text:"Pie",figure:"Pie",fill:"yellow"},
+            // {text:"PiePiece",figure:"PiePiece",fill:"yellow"},
+            // {text:"ThickCross",figure:"ThickCross",fill:"yellow"},
+            // {text:"ThinCross",figure:"ThinCross",fill:"yellow"},
+            // {text:"ThickX",figure:"ThickX",fill:"yellow"},
+            // {text:"ThinX",figure:"ThinX",fill:"yellow"},
+            // {text:"SquareIBeam",figure:"SquareIBeam",fill:"yellow"},
+            // {text:"RoundedIBeam",figure:"RoundedIBeam",fill:"yellow"},
+            // {text:"HalfEllipse",figure:"HalfEllipse",fill:"yellow"},
+            // {text:"Crescent",figure:"Crescent",fill:"yellow"},
+            // {text:"Heart",figure:"Heart",fill:"yellow"},
+            // {text:"Spade",figure:"Spade",fill:"yellow"},
+            // {text:"Club",figure:"Club",fill:"yellow"},
+            // {text:"YinYang",figure:"YinYang",fill:"yellow"},
+            // {text:"Peace",figure:"Peace",fill:"yellow"},
+            // {text:"NotAllowed",figure:"NotAllowed",fill:"yellow"},
+            // {text:"Fragile",figure:"Fragile",fill:"yellow"},
+            // {text:"HourGlass",figure:"HourGlass",fill:"yellow"},
+            // {text:"Lightning",figure:"Lightning",fill:"yellow"},
+            // {text:"GenderMale",figure:"GenderMale",fill:"yellow"},
+            // {text:"GenderFemale",figure:"GenderFemale",fill:"yellow"},
+            // {text:"LogicImplies",figure:"LogicImplies",fill:"yellow"},
+            // {text:"LogicIff",figure:"LogicIff",fill:"yellow"},
+            // {text:"LogicNot",figure:"LogicNot",fill:"yellow"},
+            // {text:"LogicAnd",figure:"LogicAnd",fill:"yellow"},
+            // {text:"LogicOr",figure:"LogicOr",fill:"yellow"},
+            // {text:"LogicXor",figure:"LogicXor",fill:"yellow"},
+            // {text:"LogicTruth",figure:"LogicTruth",fill:"yellow"},
+            // {text:"LogicFalsity",figure:"LogicFalsity",fill:"yellow"},
+            // {text:"LogicThereExists",figure:"LogicThereExists",fill:"yellow"},
+            // {text:"LogicForAll",figure:"LogicForAll",fill:"yellow"},
+            // {text:"LogicIsDefinedAs",figure:"LogicIsDefinedAs",fill:"yellow"},
+            // {text:"LogicIntersect",figure:"LogicIntersect",fill:"yellow"},
+            // {text:"LogicUnion",figure:"LogicUnion",fill:"yellow"},
+            // {text:"Arrow",figure:"Arrow",fill:"yellow"},
+            // {text:"Arrow2",figure:"Arrow2",fill:"yellow"},
+            // {text:"Chevron",figure:"Chevron",fill:"yellow"},
+            // {text:"DoubleArrow",figure:"DoubleArrow",fill:"yellow"},
+            // {text:"DoubleEndArrow",figure:"DoubleEndArrow",fill:"yellow"},
+            // {text:"DoubleEndArrow2",figure:"DoubleEndArrow2",fill:"yellow"},
+            // {text:"IBeamArrow",figure:"IBeamArrow",fill:"yellow"},
+            // {text:"IBeamArrow2",figure:"IBeamArrow2",fill:"yellow"},
+            // {text:"Pointer",figure:"Pointer",fill:"yellow"},
+            // {text:"RoundedPointer",figure:"RoundedPointer",fill:"yellow"},
+            // {text:"SplitEndArrow",figure:"SplitEndArrow",fill:"yellow"},
+            // {text:"SplitEndArrow2",figure:"SplitEndArrow2",fill:"yellow"},
+            // {text:"SquareArrow",figure:"SquareArrow",fill:"yellow"},
+            // {text:"Cone1",figure:"Cone1",fill:"yellow"},
+            // {text:"Cone2",figure:"Cone2",fill:"yellow"},
+            // {text:"Cube1",figure:"Cube1",fill:"yellow"},
+            // {text:"Cube2",figure:"Cube2",fill:"yellow"},
+            // {text:"Cylinder1",figure:"Cylinder1",fill:"yellow"},
+            // {text:"Cylinder2",figure:"Cylinder2",fill:"yellow"},
+            // {text:"Cylinder3",figure:"Cylinder3",fill:"yellow"},
+            // {text:"Cylinder4",figure:"Cylinder4",fill:"yellow"},
+            // {text:"Prism1",figure:"Prism1",fill:"yellow"},
+            // {text:"Prism2",figure:"Prism2",fill:"yellow"},
+            // {text:"Pyramid1",figure:"Pyramid1",fill:"yellow"},
+            // {text:"Pyramid2",figure:"Pyramid2",fill:"yellow"},
+            // {text:"Actor",figure:"Actor",fill:"yellow"},
+            // {text:"Card",figure:"Card",fill:"yellow"},
+            // {text:"Collate",figure:"Collate",fill:"yellow"},
+            // {text:"CreateRequest",figure:"CreateRequest",fill:"yellow"},
+            // {text:"Database",figure:"Database",fill:"yellow"},
+            // {text:"DataStorage",figure:"DataStorage",fill:"yellow"},
+            // {text:"DiskStorage",figure:"DiskStorage",fill:"yellow"},
+            // {text:"Display",figure:"Display",fill:"yellow"},
+            // {text:"DividedEvent",figure:"DividedEvent",fill:"yellow"},
+            // {text:"DividedProcess",figure:"DividedProcess",fill:"yellow"},
+            // {text:"Document",figure:"Document",fill:"yellow"},
+            // {text:"ExternalOrganization",figure:"ExternalOrganization",fill:"yellow"},
+            // {text:"ExternalProcess",figure:"ExternalProcess",fill:"yellow"},
+            // {text:"File",figure:"File",fill:"yellow"},
+            // {text:"Interrupt",figure:"Interrupt",fill:"yellow"},
+            // {text:"InternalStorage",figure:"InternalStorage",fill:"yellow"},
+            // {text:"Junction",figure:"Junction",fill:"yellow"},
+            // {text:"LinedDocument",figure:"LinedDocument",fill:"yellow"},
+            // {text:"LoopLimit",figure:"LoopLimit",fill:"yellow"},
+            // {text:"MagneticTape",figure:"MagneticTape",fill:"yellow"},
+            // {text:"ManualInput",figure:"ManualInput",fill:"yellow"},
+            // {text:"MessageFromUser",figure:"MessageFromUser",fill:"yellow"},
+            // {text:"MicroformProcessing",figure:"MicroformProcessing",fill:"yellow"},
+            // {text:"MicroformRecording",figure:"MicroformRecording",fill:"yellow"},
+            // {text:"MultiDocument",figure:"MultiDocument",fill:"yellow"},
+            // {text:"MultiProcess",figure:"MultiProcess",fill:"yellow"},
+            // {text:"OfflineStorage",figure:"OfflineStorage",fill:"yellow"},
+            // {text:"OffPageConnector",figure:"OffPageConnector",fill:"yellow"},
+            // {text:"Or",figure:"Or",fill:"yellow"},
+            // {text:"PaperTape",figure:"PaperTape",fill:"yellow"},
+            // {text:"PrimitiveFromCall",figure:"PrimitiveFromCall",fill:"yellow"},
+            // {text:"PrimitiveToCall",figure:"PrimitiveToCall",fill:"yellow"},
+            // {text:"Procedure",figure:"Procedure",fill:"yellow"},
+            // {text:"Process",figure:"Process",fill:"yellow"},
+            // {text:"Sort",figure:"Sort",fill:"yellow"},
+            // {text:"Start",figure:"Start",fill:"yellow"},
+            // {text:"Terminator",figure:"Terminator",fill:"yellow"},
+            // {text:"TransmittalTape",figure:"TransmittalTape",fill:"yellow"},
+            // {text:"AndGate",figure:"AndGate",fill:"yellow"},
+            // {text:"Buffer",figure:"Buffer",fill:"yellow"},
+            // {text:"Clock",figure:"Clock",fill:"yellow"},
+            // {text:"Ground",figure:"Ground",fill:"yellow"},
+            // {text:"Inverter",figure:"Inverter",fill:"yellow"},
+            // {text:"NandGate",figure:"NandGate",fill:"yellow"},
+            // {text:"NorGate",figure:"NorGate",fill:"yellow"},
+            // {text:"OrGate",figure:"OrGate",fill:"yellow"},
+            // {text:"XnorGate",figure:"XnorGate",fill:"yellow"},
+            // {text:"XorGate",figure:"XorGate",fill:"yellow"},
+            // {text:"Capacitor",figure:"Capacitor",fill:"yellow"},
+            // {text:"Resistor",figure:"Resistor",fill:"yellow"},
+            // {text:"Inductor",figure:"Inductor",fill:"yellow"},
+            // {text:"ACvoltageSource",figure:"ACvoltageSource",fill:"yellow"},
+            // {text:"DCvoltageSource",figure:"DCvoltageSource",fill:"yellow"},
+            // {text:"Diode",figure:"Diode",fill:"yellow"},
+            // {text:"Wifi",figure:"Wifi",fill:"yellow"},
+            // {text:"Email",figure:"Email",fill:"yellow"},
+            // {text:"Ethernet",figure:"Ethernet",fill:"yellow"},
+            // {text:"Power",figure:"Power",fill:"yellow"},
+            // {text:"Fallout",figure:"Fallout",fill:"yellow"},
+            // {text:"IrritationHazard",figure:"IrritationHazard",fill:"yellow"},
+            // {text:"ElectricalHazard",figure:"ElectricalHazard",fill:"purple"},
+            // {text:"FireHazard",figure:"FireHazard",fill:"yellow"},
+            // {text:"BpmnActivityLoop",figure:"BpmnActivityLoop",fill:"yellow"},
+            // {text:"BpmnActivityParallel",figure:"BpmnActivityParallel",fill:"yellow"},
+            // {text:"BpmnActivitySequential",figure:"BpmnActivitySequential",fill:"yellow"},
+            // {text:"BpmnActivityAdHoc",figure:"BpmnActivityAdHoc",fill:"yellow"},
+            // {text:"BpmnActivityCompensation",figure:"BpmnActivityCompensation",fill:"yellow"},
+            // {text:"BpmnTaskMessage",figure:"BpmnTaskMessage",fill:"yellow"},
+            // {text:"BpmnTaskScript",figure:"BpmnTaskScript",fill:"yellow"},
+            // {text:"BpmnTaskUser",figure:"BpmnTaskUser",fill:"yellow"},
+            // {text:"BpmnEventConditional",figure:"BpmnEventConditional",fill:"yellow"},
+            // {text:"BpmnEventError",figure:"BpmnEventError",fill:"yellow"},
+            // {text:"BpmnEventEscalation",figure:"BpmnEventEscalation",fill:"yellow"},
+            // {text:"Caution",figure:"Caution",fill:"yellow"},
+            // {text:"Recycle",figure:"Recycle",fill:"yellow"},
+            // {text:"BpmnEventTimer",figure:"BpmnEventTimer",fill:"yellow"},
+            // {text:"Package",figure:"Package",fill:"yellow"},
+            // {text:"Class",figure:"Class",fill:"yellow"},
+            // {text:"Component",figure:"Component",fill:"yellow"},
+            // {text:"BoatShipment",figure:"BoatShipment",fill:"yellow"},
+            // {text:"Customer/Supplier",figure:"Customer/Supplier",fill:"yellow"},
+            // {text:"Workcell",figure:"Workcell",fill:"yellow"},
+            // {text:"Supermarket",figure:"Supermarket",fill:"yellow"},
+            // {text:"TruckShipment",figure:"TruckShipment",fill:"yellow"},
+            // {text:"KanbanPost",figure:"KanbanPost",fill:"yellow"},
+            // {text:"Forklift",figure:"Forklift",fill:"yellow"},
+            // {text:"RailShipment",figure:"RailShipment",fill:"yellow"},
+            // {text:"Warehouse",figure:"Warehouse",fill:"yellow"},
+            // {text:"ControlCenter",figure:"ControlCenter",fill:"yellow"},
+            // {text:"Bluetooth",figure:"Bluetooth",fill:"yellow"},
+            // {text:"Bookmark",figure:"Bookmark",fill:"yellow"},
+            // {text:"Bookmark",figure:"Bookmark",fill:"yellow"},
+            // {text:"Globe",figure:"Globe",fill:"yellow"},
+            // {text:"Wave",figure:"Wave",fill:"yellow"},
+            // {text:"Operator",figure:"Operator",fill:"yellow"},
+            // {text:"TripleFanBlades",figure:"TripleFanBlades",fill:"yellow"},
+            // {text:"CentrifugalPump",figure:"CentrifugalPump",fill:"yellow"},
+            // {text:"Battery",figure:"Battery",fill:"yellow"},
+            // {text:"Delete",figure:"Delete",fill:"yellow"},
+            // {text:"Flag",figure:"Flag",fill:"yellow"},
+            // {text:"Help",figure:"Help",fill:"yellow"},
+            // {text:"Location",figure:"Location",fill:"yellow"},
+            // {text:"Lock",figure:"Lock",fill:"red"},
+            // {text:"Unlocked",figure:"Unlocked",fill:"green"},
+            // {text:"Gear",figure:"Gear",fill:"yellow"},
+            // {text:"Hand",figure:"Hand",fill:"red"},
+            // {text:"Map",figure:"Map",fill:"yellow"},
+            // {text:"Eject",figure:"Eject",fill:"yellow"},
+            // {text:"Pencil",figure:"Pencil",fill:"red"},
+            // {text:"Building",figure:"Building",fill:"yellow"},
+            // {text:"Staircase",figure:"Staircase",fill:"red"},
+            // {text:"5Bars",figure:"5Bars",fill:"red"},
+            // {text:"PC",figure:"PC",fill:"yellow"},
+            // {text:"Plane",figure:"Plane",fill:"yellow"},
+            // {text:"Key",figure:"Key",fill:"red"},
+            // {text:"FilmTape",figure:"FilmTape",fill:"yellow"},
+            // {text:"FloppyDisk",figure:"FloppyDisk",fill:"yellow"},
+            // {text:"SpeechBubble",figure:"SpeechBubble",fill:"yellow"},
+            // {text:"Repeat",figure:"Repeat",fill:"yellow"},
+            // {text:"Windows",figure:"Windows",fill:"yellow"},
+            // {text:"Terminal",figure:"Terminal",fill:"yellow"},
+            // {text:"Beaker",figure:"Beaker",fill:"yellow"},
+            // {text:"Download",figure:"Download",fill:"yellow"},
+            // {text:"Bin",figure:"Bin",fill:"yellow"},
+            // {text:"Upload",figure:"Upload",fill:"yellow"},
+            // {text:"EmptyDrink",figure:"EmptyDrink",fill:"yellow"},
+            // {text:"Drink",figure:"Drink",fill:"yellow"},
+            // {text:"4Arrows",figure:"4Arrows",fill:"yellow"},
+            // {text:"Connector",figure:"Connector",fill:"yellow"},
+            // {text:"Alternative",figure:"Alternative",fill:"yellow"},
+            // {text:"Merge",figure:"Merge",fill:"yellow"},
+            // {text:"Decision",figure:"Decision",fill:"yellow"},
+            // {text:"DataTransmissions",figure:"DataTransmissions",fill:"yellow"},
+            // {text:"Gate",figure:"Gate",fill:"yellow"},
+            // {text:"Delay",figure:"Delay",fill:"yellow"},
+            // {text:"Input",figure:"Input",fill:"yellow"},
+            // {text:"ManualLoop",figure:"ManualLoop",fill:"yellow"},
+            // {text:"ISOProcess",figure:"ISOProcess",fill:"yellow"},
+            // {text:"MessageToUser",figure:"MessageToUser",fill:"yellow"},
+            // {text:"MagneticData",figure:"MagneticData",fill:"yellow"},
+            // {text:"DirectData",figure:"DirectData",fill:"yellow"},
+            // {text:"StoredData",figure:"StoredData",fill:"yellow"},
+            // {text:"SequentialData",figure:"SequentialData",fill:"yellow"},
+            // {text:"Subroutine",figure:"Subroutine",fill:"yellow"}
+</script>
